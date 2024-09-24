@@ -6,13 +6,16 @@ const SocketContext = createContext();
 
 const socket = io("http://localhost:5000");
 
-export const ContextProvider = ({ children }) => {
+const ContextProvider = ({ children }) => {
   const [stream, setStream] = useState(null);
   const [me, setMe] = useState("");
   const [call, setCall] = useState({});
   const [callAccepted, setCallAccepted] = useState(false);
-  const [callEnd, setCallEnd] = useState(false);
+  const [callEnded, setCallEnded] = useState(false);
+  const [name, setName] = useState("");
   const myVideo = useRef(null);
+  const userVideo = useRef(null);
+  const connection = useRef(null);
 
   useEffect(() => {
     navigator.mediaDevices
@@ -34,14 +37,65 @@ export const ContextProvider = ({ children }) => {
 
     peer.on("signal", (data) => {
       socket.emit("answerCall", { signal: data, to: call.from });
+
+      peer.on("stream", (currentStream) => {
+        userVideo.current.srcObject = currentStream;
+      });
     });
+
+    peer.signal(call.signal);
+
+    connection.current = peer;
   };
-  const callUser = () => {};
-  const leaveCall = () => {};
+  const callUser = (id) => {
+    const peer = new Peer({ initiator: false, trickle: false, stream });
 
-  return <SocketContext.Provider>{children}</SocketContext.Provider>;
+    peer.on("signal", (data) => {
+      socket.emit("callUSer", {
+        userToCall: id,
+        signalData: data,
+        from: me,
+        name,
+      });
+
+      peer.on("stream", (currentStream) => {
+        userVideo.current.srcObject = currentStream;
+      });
+    });
+
+    socket.on("callAccepted", (signal) => {
+      setCallAccepted(true);
+      peer.signal(signal);
+    });
+
+    connection.current = peer;
+  };
+  const leaveCall = () => {
+    setCallEnded(true);
+    connection.current.destroy();
+    window.location.reload();
+  };
+
+  return (
+    <SocketContext.Provider
+      value={{
+        call,
+        callAccepted,
+        myVideo,
+        userVideo,
+        name,
+        setName,
+        callEnded,
+        stream,
+        me,
+        callUser,
+        leaveCall,
+        answerCall,
+      }}
+    >
+      {children}
+    </SocketContext.Provider>
+  );
 };
 
-export const useSocketContext = () => {
-  return useContext(SocketContext);
-};
+export { ContextProvider, SocketContext };
